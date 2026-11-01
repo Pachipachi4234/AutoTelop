@@ -10,14 +10,12 @@
         .input-ui { background: #010409; border: 1px solid #30363d; color: #c9d1d9; border-radius: 0.5rem; padding: 0.5rem; width: 100%; }
         .input-ui:focus { outline: none; border-color: #58a6ff; }
         input[type="color"] { padding: 0; height: 2.5rem; cursor: pointer; }
-        /* 透過チェック柄 */
-        .checker-bg { background-image: linear-gradient(45deg, #1f2428 25%, transparent 25%), linear-gradient(-45deg, #1f2428 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1f2428 75%), linear-gradient(-45deg, transparent 75%, #1f2428 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0; }
     </style>
 </head>
 <body class="min-h-screen p-6 space-y-6 max-w-6xl mx-auto">
     <header class="border-b border-[#30363d] pb-4">
         <h1 class="text-3xl font-bold text-[#58a6ff]">AutoStudio <span class="text-sm font-normal text-gray-400">by YuJitsu</span></h1>
-        <p class="text-[#8b949e] mt-2">AIで自動文字起こしを行い、スタイル付きのテロップブロックを生成。背景透過のテロップ動画として書き出せます。</p>
+        <p class="text-[#8b949e] mt-2">AIで自動文字起こしを行い、動画にそのままスタイル付きテロップと音声を合成してMP4動画として書き出します。</p>
     </header>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -27,8 +25,6 @@
             <!-- ① デフォルトスタイル設定 -->
             <div class="panel">
                 <h2 class="text-lg font-bold mb-4 text-[#79c0ff]">① デフォルト・テロップ設定</h2>
-                <p class="text-xs text-gray-400 mb-4">ここで設定したスタイルが、AI解析後にすべてのブロックの初期値として適用されます。</p>
-                
                 <div class="space-y-3 text-sm">
                     <div>
                         <label class="block mb-1">フォント種類</label>
@@ -44,22 +40,16 @@
                         <div><label class="block mb-1">縁取り色</label><input type="color" id="def-stroke-color" value="#000000" class="input-ui"></div>
                     </div>
                     <div class="grid grid-cols-2 gap-2">
-                        <div><label class="block mb-1">縁取りの太さ</label><input type="number" id="def-stroke-width" value="4" class="input-ui" min="0" max="20"></div>
+                        <div><label class="block mb-1">縁取りの太さ</label><input type="number" id="def-stroke-width" value="6" class="input-ui" min="0" max="20"></div>
                         <div><label class="block mb-1">文字サイズ</label><input type="number" id="def-size" value="60" class="input-ui" min="10"></div>
                     </div>
                     <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="block mb-1">影・発光 (Blur)</label>
-                            <input type="number" id="def-shadow-blur" value="10" class="input-ui" min="0">
-                        </div>
-                        <div>
-                            <label class="block mb-1">影の色</label>
-                            <input type="color" id="def-shadow-color" value="#000000" class="input-ui">
-                        </div>
+                        <div><label class="block mb-1">影・発光 (Blur)</label><input type="number" id="def-shadow-blur" value="10" class="input-ui" min="0"></div>
+                        <div><label class="block mb-1">影の色</label><input type="color" id="def-shadow-color" value="#000000" class="input-ui"></div>
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <div><label class="block mb-1">表示位置 X (%)</label><input type="number" id="def-x" value="50" class="input-ui" min="0" max="100"></div>
-                        <div><label class="block mb-1">表示位置 Y (%)</label><input type="number" id="def-y" value="90" class="input-ui" min="0" max="100"></div>
+                        <div><label class="block mb-1">表示位置 Y (%)</label><input type="number" id="def-y" value="88" class="input-ui" min="0" max="100"></div>
                     </div>
                     <div>
                         <label class="block mb-1">アニメーション</label>
@@ -77,7 +67,7 @@
             <!-- ② ファイル読み込み & AI実行 -->
             <div class="panel">
                 <h2 class="text-lg font-bold mb-4 text-[#79c0ff]">② AI文字起こし実行</h2>
-                <input type="file" id="mediaInput" accept="audio/*,video/*" class="block w-full text-sm text-[#8b949e] file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#238636] file:text-white hover:file:bg-[#2ea043] cursor-pointer mb-4">
+                <input type="file" id="mediaInput" accept="video/*,audio/*" class="block w-full text-sm text-[#8b949e] file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#238636] file:text-white hover:file:bg-[#2ea043] cursor-pointer mb-4">
                 
                 <button id="startBtn" class="bg-[#238636] hover:bg-[#2ea043] text-white px-4 py-3 rounded-md font-bold w-full transition disabled:opacity-50">
                     解析してブロックを生成
@@ -88,10 +78,10 @@
 
             <!-- ③ 書き出し -->
             <div class="panel">
-                <h2 class="text-lg font-bold mb-4 text-[#79c0ff]">③ テロップ動画書き出し</h2>
-                <p class="text-xs text-gray-400 mb-4">プレビューのキャンバスを、背景透過のWebM動画として保存します。YMM4等の上に配置してください。</p>
+                <h2 class="text-lg font-bold mb-4 text-[#79c0ff]">③ 合成動画の書き出し</h2>
+                <p class="text-xs text-gray-400 mb-4">プレビューの映像にテロップと音声を合成し、1つの動画として保存します。</p>
                 <button id="exportBtn" class="bg-[#8957e5] hover:bg-[#9d6cfa] text-white px-4 py-3 rounded-md font-bold w-full transition disabled:opacity-50" disabled>
-                    透過WebMを書き出す
+                    MP4で書き出す
                 </button>
             </div>
         </div>
@@ -102,17 +92,21 @@
             <!-- プレビュー画面 -->
             <div class="panel flex-none relative">
                 <div class="flex justify-between items-center mb-2">
-                    <h2 class="text-lg font-bold text-[#79c0ff]">プレビュー</h2>
-                    <div class="text-sm text-gray-400">キャンバスサイズ: 1920x1080 (16:9)</div>
+                    <h2 class="text-lg font-bold text-[#79c0ff]">プレビュー (合成結果)</h2>
                 </div>
                 
-                <!-- メディアプレイヤー(裏) と キャンバス(表) -->
-                <div class="relative w-full aspect-video bg-black rounded-lg overflow-hidden checker-bg border border-[#30363d]">
-                    <video id="mediaPlayer" class="absolute inset-0 w-full h-full object-contain opacity-40" controls></video>
-                    <!-- 内部解像度はFHD -->
-                    <canvas id="subtitleCanvas" width="1920" height="1080" class="absolute inset-0 w-full h-full object-contain pointer-events-none"></canvas>
+                <div class="relative w-full aspect-video bg-black rounded-lg overflow-hidden border border-[#30363d]">
+                    <!-- 表示用と音声再生用の動画プレーヤー -->
+                    <video id="mediaPlayer" class="absolute inset-0 w-full h-full object-contain hidden" crossorigin="anonymous"></video>
+                    
+                    <!-- 実際に動画とテロップを合成して描画するキャンバス -->
+                    <canvas id="subtitleCanvas" class="absolute inset-0 w-full h-full object-contain"></canvas>
                 </div>
-                <div class="text-xs text-gray-500 mt-2 text-center">※プレビューでは動画は暗く表示されますが、書き出されるのは「テロップ」と「透明な背景」のみです。</div>
+                <!-- キャンバス下部に独自のコントロールUI（簡易版） -->
+                <div class="flex items-center gap-2 mt-2 bg-[#010409] p-2 rounded">
+                    <button id="playBtn" class="text-white px-3 py-1 bg-[#21262d] rounded hover:bg-[#30363d]">再生 / 一時停止</button>
+                    <input type="range" id="seekSlider" class="flex-1" value="0" step="0.1" min="0">
+                </div>
             </div>
 
             <!-- ブロックリスト -->
@@ -134,10 +128,13 @@
     env.allowLocalModels = false;
 
     // --- State & Elements ---
-    let blocks = []; // テロップブロックの配列
+    let blocks = [];
     let blockIdCounter = 0;
     let isExporting = false;
     let rafId = null;
+    let audioCtxExport = null;
+    let mediaSource = null;
+    let mediaDest = null;
 
     const ui = {
         defFont: document.getElementById('def-font'),
@@ -159,10 +156,15 @@
         mediaPlayer: document.getElementById('mediaPlayer'),
         canvas: document.getElementById('subtitleCanvas'),
         blocksContainer: document.getElementById('blocksContainer'),
-        addBlockBtn: document.getElementById('addBlockBtn')
+        addBlockBtn: document.getElementById('addBlockBtn'),
+
+        playBtn: document.getElementById('playBtn'),
+        seekSlider: document.getElementById('seekSlider')
     };
 
     const ctx = ui.canvas.getContext('2d');
+    ui.canvas.width = 1920; 
+    ui.canvas.height = 1080;
 
     // --- Helper: Get Default Style ---
     function getDefaultStyle() {
@@ -188,6 +190,28 @@
         if(mediaUrl) URL.revokeObjectURL(mediaUrl);
         mediaUrl = URL.createObjectURL(file);
         ui.mediaPlayer.src = mediaUrl;
+        
+        // 動画の解像度に合わせてキャンバスサイズを変更
+        ui.mediaPlayer.onloadedmetadata = () => {
+            if(ui.mediaPlayer.videoWidth) {
+                ui.canvas.width = ui.mediaPlayer.videoWidth;
+                ui.canvas.height = ui.mediaPlayer.videoHeight;
+            }
+            ui.seekSlider.max = ui.mediaPlayer.duration;
+            ui.exportBtn.disabled = false;
+        };
+    });
+
+    // プレイヤーの簡易コントロール
+    ui.playBtn.addEventListener('click', () => {
+        if(ui.mediaPlayer.paused) ui.mediaPlayer.play();
+        else ui.mediaPlayer.pause();
+    });
+    ui.mediaPlayer.addEventListener('timeupdate', () => {
+        if(!isExporting) ui.seekSlider.value = ui.mediaPlayer.currentTime;
+    });
+    ui.seekSlider.addEventListener('input', (e) => {
+        ui.mediaPlayer.currentTime = parseFloat(e.target.value);
     });
 
     // --- AI Transcription Logic ---
@@ -219,7 +243,6 @@
                 chunk_length_s: 30, stride_length_s: 5, language: 'japanese', task: 'transcribe', return_timestamps: true
             });
 
-            // 無音1.0秒以上でブロックを分割するロジック
             let chunks = result.chunks || [];
             let currentBlock = null;
             const defStyle = getDefaultStyle();
@@ -242,8 +265,7 @@
             ui.aiStatus.innerText = "✅ 解析完了！ブロックを生成しました。";
             setTimeout(() => ui.aiStatus.classList.add('hidden'), 3000);
             renderBlocksUI();
-            ui.exportBtn.disabled = false;
-
+            
         } catch (e) {
             ui.aiStatus.innerText = "❌ エラー: " + e.message;
             console.error(e);
@@ -264,16 +286,16 @@
                     <input type="number" step="0.1" class="input-ui !py-1 w-20 text-xs" value="${block.start.toFixed(2)}" onchange="updateBlock(${block.id}, 'start', this.value)">
                     <span class="text-gray-500 text-xs">〜</span>
                     <input type="number" step="0.1" class="input-ui !py-1 w-20 text-xs" value="${block.end.toFixed(2)}" onchange="updateBlock(${block.id}, 'end', this.value)">
+                    <button class="text-xs bg-[#30363d] px-2 py-1 rounded ml-2" onclick="seekTo(${block.start})">▶ ここから再生</button>
                     <div class="ml-auto text-xs flex items-center gap-2">
                         <label class="flex items-center gap-1 cursor-pointer text-[#79c0ff]">
-                            <input type="checkbox" ${block.override ? 'checked' : ''} onchange="toggleOverride(${block.id}, this.checked)"> 個別スタイル適用
+                            <input type="checkbox" ${block.override ? 'checked' : ''} onchange="toggleOverride(${block.id}, this.checked)"> 個別スタイル
                         </label>
                         <button class="text-red-400 hover:text-red-300 ml-2" onclick="deleteBlock(${block.id})">削除</button>
                     </div>
                 </div>
                 <textarea class="input-ui w-full h-12 text-sm" onchange="updateBlock(${block.id}, 'text', this.value)">${block.text}</textarea>
                 
-                <!-- 個別スタイルパネル (override時のみ表示) -->
                 <div id="style-panel-${block.id}" class="mt-3 p-3 bg-[#161b22] rounded border border-[#30363d] text-xs ${block.override ? 'block' : 'hidden'}">
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div><label class="block mb-1">フォント</label><select class="input-ui !py-1" onchange="updateStyle(${block.id}, 'font', this.value)">
@@ -298,132 +320,128 @@
         });
     }
 
-    // Window global functions for inline HTML event handlers
-    window.updateBlock = (id, key, val) => {
-        const b = blocks.find(x => x.id === id);
-        if(b) b[key] = (key === 'start' || key === 'end') ? parseFloat(val) : val;
-    };
-    window.updateStyle = (id, key, val) => {
-        const b = blocks.find(x => x.id === id);
-        if(b) b.style[key] = (key === 'size' || key === 'strokeWidth' || key === 'x' || key === 'y') ? parseFloat(val) : val;
-    };
+    // Global UI events
+    window.updateBlock = (id, key, val) => { const b = blocks.find(x => x.id === id); if(b) b[key] = (key === 'start' || key === 'end') ? parseFloat(val) : val; };
+    window.updateStyle = (id, key, val) => { const b = blocks.find(x => x.id === id); if(b) b.style[key] = (key === 'size' || key === 'strokeWidth' || key === 'x' || key === 'y') ? parseFloat(val) : val; };
     window.toggleOverride = (id, checked) => {
         const b = blocks.find(x => x.id === id);
         if(b) {
             b.override = checked;
-            if(checked) b.style = {...getDefaultStyle()}; // override有効時に現在のデフォルトをコピー
+            if(checked) b.style = {...getDefaultStyle()};
             document.getElementById(`style-panel-${id}`).style.display = checked ? 'block' : 'none';
             renderBlocksUI();
         }
     };
-    window.deleteBlock = (id) => {
-        blocks = blocks.filter(x => x.id !== id);
-        renderBlocksUI();
-    };
+    window.deleteBlock = (id) => { blocks = blocks.filter(x => x.id !== id); renderBlocksUI(); };
+    window.seekTo = (time) => { ui.mediaPlayer.currentTime = time; ui.mediaPlayer.play(); };
+
     ui.addBlockBtn.addEventListener('click', () => {
         const lastEnd = blocks.length > 0 ? blocks[blocks.length-1].end : 0;
         blocks.push({ id: blockIdCounter++, start: lastEnd + 0.5, end: lastEnd + 3.5, text: "新規テロップ", override: false, style: {...getDefaultStyle()} });
         renderBlocksUI();
-        ui.exportBtn.disabled = false;
     });
 
     // --- Canvas Rendering Loop ---
     function drawCanvas() {
         ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
-        const t = ui.mediaPlayer.currentTime;
+        
+        // 1. 元の動画を描画 (映像データがある場合のみ)
+        if (ui.mediaPlayer.readyState >= 2) {
+            ctx.drawImage(ui.mediaPlayer, 0, 0, ui.canvas.width, ui.canvas.height);
+        }
 
-        // 現在時刻に合致するブロックを探す
+        const t = ui.mediaPlayer.currentTime;
         const activeBlock = blocks.find(b => t >= b.start && t <= b.end);
         
+        // 2. その上にテロップを描画
         if (activeBlock) {
             const style = activeBlock.override ? activeBlock.style : getDefaultStyle();
             const timeIn = t - activeBlock.start;
             const duration = activeBlock.end - activeBlock.start;
-            const progress = Math.min(1, timeIn / duration);
             
             ctx.save();
-            let alpha = 1.0;
-            let yOffset = 0;
-            let scale = 1.0;
-            let textToDraw = activeBlock.text;
+            let alpha = 1.0; let yOffset = 0; let scale = 1.0; let textToDraw = activeBlock.text;
 
-            // アニメーション処理
-            if (style.anim === 'fade') {
-                alpha = Math.min(1, timeIn * 3); // 0.33秒でフェードイン
-            } else if (style.anim === 'slide-up') {
-                alpha = Math.min(1, timeIn * 3);
-                yOffset = (1 - alpha) * 40; // 40px下からスライド
-            } else if (style.anim === 'typewriter') {
-                const charCount = Math.floor(timeIn * 15); // 1秒間に15文字表示
-                textToDraw = textToDraw.substring(0, Math.min(textToDraw.length, charCount));
-            } else if (style.anim === 'zoom-in') {
-                alpha = Math.min(1, timeIn * 3);
-                scale = 0.8 + (0.2 * Math.min(1, timeIn * 4)); // 0.8 -> 1.0 に拡大
-            }
+            if (style.anim === 'fade') { alpha = Math.min(1, timeIn * 3); }
+            else if (style.anim === 'slide-up') { alpha = Math.min(1, timeIn * 3); yOffset = (1 - alpha) * 40; }
+            else if (style.anim === 'typewriter') { const charCount = Math.floor(timeIn * 15); textToDraw = textToDraw.substring(0, Math.min(textToDraw.length, charCount)); }
+            else if (style.anim === 'zoom-in') { alpha = Math.min(1, timeIn * 3); scale = 0.8 + (0.2 * Math.min(1, timeIn * 4)); }
 
             ctx.globalAlpha = alpha;
             ctx.font = `900 ${style.size}px ${style.font}`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             
-            // X, Yの位置設定 (キャンバスの幅・高さに対する％)
             const baseX = (style.x / 100) * ui.canvas.width;
             const baseY = (style.y / 100) * ui.canvas.height + yOffset;
 
-            // スケール適用 (中央基準)
-            if (scale !== 1.0) {
-                ctx.translate(baseX, baseY);
-                ctx.scale(scale, scale);
-                ctx.translate(-baseX, -baseY);
-            }
+            if (scale !== 1.0) { ctx.translate(baseX, baseY); ctx.scale(scale, scale); ctx.translate(-baseX, -baseY); }
 
-            // スタイル適用
             ctx.fillStyle = style.color;
             ctx.strokeStyle = style.strokeColor;
             ctx.lineWidth = style.strokeWidth;
             ctx.lineJoin = 'round';
 
-            if (style.shadowBlur > 0) {
-                ctx.shadowColor = style.shadowColor;
-                ctx.shadowBlur = style.shadowBlur;
-            }
+            if (style.shadowBlur > 0) { ctx.shadowColor = style.shadowColor; ctx.shadowBlur = style.shadowBlur; }
 
-            // 改行対応描画
             const lines = textToDraw.split('\n');
             const lineHeight = style.size * 1.3;
             const startY = baseY - ((lines.length - 1) * lineHeight) / 2;
 
             for (let i = 0; i < lines.length; i++) {
                 const y = startY + (i * lineHeight);
-                // 影をストロークにだけ付けるための小技
                 if(style.strokeWidth > 0) ctx.strokeText(lines[i], baseX, y);
-                
-                ctx.shadowBlur = 0; // 中の色には影をかけない
+                ctx.shadowBlur = 0;
                 ctx.fillText(lines[i], baseX, y);
             }
-            
             ctx.restore();
         }
-        
         rafId = requestAnimationFrame(drawCanvas);
     }
     drawCanvas(); // ループ開始
 
-    // --- WebM Video Export ---
+    // --- MP4 Video & Audio Export ---
     ui.exportBtn.addEventListener('click', async () => {
         if(isExporting) return;
-        if(!window.MediaRecorder || !ui.canvas.captureStream) { alert('お使いのブラウザは書き出しに対応していません。Chrome等を推奨します。'); return; }
-        
+        if(!window.MediaRecorder || !ui.canvas.captureStream) { alert('お使いのブラウザは書き出しに対応していません。'); return; }
+        if(!ui.mediaPlayer.src) return;
+
         isExporting = true;
         ui.exportBtn.innerText = "書き出し中... (動画再生を止めないでください)";
         ui.exportBtn.classList.replace('bg-[#8957e5]', 'bg-gray-600');
         
-        // 透過WebMを優先
-        const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+        // --- ストリームの合成（映像＋音声）---
+        const canvasStream = ui.canvas.captureStream(30); // 映像(30FPS)
+        let audioStream = new MediaStream();
+
+        try {
+            // Web Audio API を使って動画の音声をキャプチャする（安全・確実な方法）
+            if(!audioCtxExport) {
+                audioCtxExport = new (window.AudioContext || window.webkitAudioContext)();
+                mediaSource = audioCtxExport.createMediaElementSource(ui.mediaPlayer);
+                mediaDest = audioCtxExport.createMediaStreamDestination();
+                mediaSource.connect(mediaDest);
+                mediaSource.connect(audioCtxExport.destination); // プレビュー中も音を出す
+            }
+            audioStream = mediaDest.stream;
+        } catch(e) {
+            // エラー時のフォールバック (Firefox等の captureStream)
+            console.warn("Audio Context capture failed, using fallback.", e);
+            if (ui.mediaPlayer.captureStream) audioStream = ui.mediaPlayer.captureStream();
+            else if (ui.mediaPlayer.mozCaptureStream) audioStream = ui.mediaPlayer.mozCaptureStream();
+        }
+
+        // 映像と音声を1つのストリームにガッチャンコ
+        const combinedStream = new MediaStream([
+            ...canvasStream.getVideoTracks(),
+            ...audioStream.getAudioTracks()
+        ]);
+
+        // Chrome等でMP4がサポートされていればMP4、ダメならWebMで出力
+        const mimeOptions = ['video/mp4;codecs=h264,aac', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
+        const mime = mimeOptions.find(m => MediaRecorder.isTypeSupported(m)) || '';
+        const ext = mime.includes('mp4') ? 'mp4' : 'webm';
         
-        // 録画ストリーム設定 (30 FPS)
-        const stream = ui.canvas.captureStream(30);
-        const rec = new MediaRecorder(stream, { mimeType: mime });
+        const rec = new MediaRecorder(combinedStream, mime ? { mimeType: mime } : undefined);
         const chunks = [];
         
         rec.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
@@ -432,21 +450,22 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'autostudio_telop.webm';
+            a.download = `autostudio_export.${ext}`;
             a.click();
             URL.revokeObjectURL(url);
             
             isExporting = false;
-            ui.exportBtn.innerText = "透過WebMを書き出す";
+            ui.exportBtn.innerText = "MP4で書き出す";
             ui.exportBtn.classList.replace('bg-gray-600', 'bg-[#8957e5]');
             ui.mediaPlayer.pause();
         };
 
-        // 動画を頭から再生して録画開始
+        // 録画のために動画を最初から再生
         ui.mediaPlayer.currentTime = 0;
         await ui.mediaPlayer.play();
         rec.start(250);
 
+        // 動画が最後まで再生されたら録画を終了
         ui.mediaPlayer.onended = () => {
             if(rec.state !== 'inactive') rec.stop();
         };
