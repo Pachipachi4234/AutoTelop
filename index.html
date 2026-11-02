@@ -251,7 +251,8 @@
                 if (!currentBlock) {
                     currentBlock = { id: blockIdCounter++, start: chunk.timestamp[0], end: chunk.timestamp[1], text: chunk.text.trim(), override: false, style: {...defStyle} };
                 } else {
-                    if (chunk.timestamp[0] - currentBlock.end >= 1.0) {
+                    // ★ココが変更点！ 0.5秒以上の無音、または文字数が20文字を超えたら強制的にブロックを分割する
+                    if (chunk.timestamp[0] - currentBlock.end >= 0.5 || currentBlock.text.length + chunk.text.length > 20) {
                         blocks.push(currentBlock);
                         currentBlock = { id: blockIdCounter++, start: chunk.timestamp[0], end: chunk.timestamp[1], text: chunk.text.trim(), override: false, style: {...defStyle} };
                     } else {
