@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>AutoStudio | AIテロップ動画ジェネレーター</title>
+    <title>AutoStudio | AIテロップ動画ジェネレーター (WebCodecs爆速版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0d1117; color: #c9d1d9; font-family: sans-serif; }
@@ -15,8 +15,8 @@
 </head>
 <body class="min-h-screen p-6 space-y-6 max-w-6xl mx-auto">
     <header class="border-b border-[#30363d] pb-4">
-        <h1 class="text-3xl font-bold text-[#58a6ff]">AutoStudio <span class="text-sm font-normal text-gray-400">by YuJitsu</span></h1>
-        <p class="text-[#8b949e] mt-2">AIで自動文字起こしを行い、動画にそのままスタイル付きテロップと音声を合成してMP4動画として書き出します。</p>
+        <h1 class="text-3xl font-bold text-[#58a6ff]">AutoStudio <span class="text-sm font-normal text-gray-400">by YuJitsu · WebCodecs Turbo</span></h1>
+        <p class="text-[#8b949e] mt-2">AIで自動文字起こしを行い、WebCodecs（GPU直接エンコード）で待ち時間なく爆速MP4動画を書き出します。</p>
     </header>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -86,13 +86,27 @@
                 <div id="aiStatus" class="mt-4 text-xs text-[#58a6ff] hidden font-mono whitespace-pre-wrap"></div>
             </div>
 
-            <!-- ③ 書き出し -->
+            <!-- ③ 爆速書き出し -->
             <div class="panel p-4">
-                <h2 class="text-lg font-bold mb-4 text-[#79c0ff]">③ 合成動画の書き出し</h2>
-                <p class="text-xs text-gray-400 mb-4">プレビューの映像にテロップと音声を合成し保存します。</p>
+                <h2 class="text-lg font-bold mb-2 text-[#79c0ff]">③ 合成動画の爆速書き出し</h2>
+                <p class="text-xs text-gray-400 mb-3">等倍再生を待たず、WebCodecsで映像・テロップ・音声を一気に合成出力します。</p>
+                <div class="mb-3">
+                    <label class="block text-xs mb-1 text-gray-300">出力フレームレート (FPS)</label>
+                    <select id="exportFps" class="input-ui !py-1 text-xs">
+                        <option value="30" selected>30 FPS（標準・高速）</option>
+                        <option value="24">24 FPS（さらに爆速）</option>
+                        <option value="60">60 FPS（ぬるぬる高画質）</option>
+                    </select>
+                </div>
                 <button id="exportBtn" class="bg-[#8957e5] hover:bg-[#9d6cfa] text-white px-4 py-3 rounded-md font-bold w-full transition disabled:opacity-50" disabled>
-                    MP4で書き出す
+                    ⚡ WebCodecsで爆速MP4書き出し
                 </button>
+                <div id="exportProgressWrap" class="hidden mt-3">
+                    <div class="w-full bg-[#010409] rounded-full h-2.5 border border-[#30363d] overflow-hidden">
+                        <div id="exportProgressBar" class="bg-[#8957e5] h-2.5 transition-all duration-75" style="width: 0%"></div>
+                    </div>
+                    <div id="exportProgressText" class="text-xs text-[#79c0ff] mt-1 font-mono">0%</div>
+                </div>
             </div>
         </div>
 
@@ -118,7 +132,7 @@
             <!-- ブロックリスト -->
             <div class="panel flex-1 overflow-y-auto p-4" style="max-height: 500px;">
                 <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-bold text-[#79c0ff]">テロップブロック一覧</h2>
+                    <h2 class="text-lg font-bold text-[#79c0ff]">テロップブロック一覧（同時複数表示対応）</h2>
                     <button id="addBlockBtn" class="text-xs bg-[#21262d] border border-[#30363d] px-3 py-1 rounded hover:bg-[#30363d]">＋ 新規ブロック</button>
                 </div>
                 <div id="blocksContainer" class="space-y-4">
@@ -131,15 +145,14 @@
 
 <script type="module">
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.16.0';
+    import { Muxer, ArrayBufferTarget } from 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/+esm';
     env.allowLocalModels = false;
 
     let blocks = [];
     let blockIdCounter = 0;
     let isExporting = false;
-    let rafId = null;
-    let audioCtxExport = null;
-    let mediaSource = null;
-    let mediaDest = null;
+    let decodedAudioBuf = null;
+    let hasVideoTrack = false;
 
     const ui = {
         defFont: document.getElementById('def-font'),
@@ -162,7 +175,11 @@
         mediaInput: document.getElementById('mediaInput'),
         startBtn: document.getElementById('startBtn'),
         aiStatus: document.getElementById('aiStatus'),
+        exportFps: document.getElementById('exportFps'),
         exportBtn: document.getElementById('exportBtn'),
+        exportProgressWrap: document.getElementById('exportProgressWrap'),
+        exportProgressBar: document.getElementById('exportProgressBar'),
+        exportProgressText: document.getElementById('exportProgressText'),
         
         mediaPlayer: document.getElementById('mediaPlayer'),
         canvas: document.getElementById('subtitleCanvas'),
@@ -198,44 +215,48 @@
     }
 
     let mediaUrl = null;
-    ui.mediaInput.addEventListener('change', (e) => {
+    ui.mediaInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if(!file) return;
         if(mediaUrl) URL.revokeObjectURL(mediaUrl);
         mediaUrl = URL.createObjectURL(file);
         ui.mediaPlayer.src = mediaUrl;
+        hasVideoTrack = file.type.startsWith('video/');
         
         ui.mediaPlayer.onloadedmetadata = () => {
             if(ui.mediaPlayer.videoWidth) {
-                ui.canvas.width = ui.mediaPlayer.videoWidth;
-                ui.canvas.height = ui.mediaPlayer.videoHeight;
+                const w = ui.mediaPlayer.videoWidth;
+                const h = ui.mediaPlayer.videoHeight;
+                ui.canvas.width = w % 2 === 0 ? w : w - 1;
+                ui.canvas.height = h % 2 === 0 ? h : h - 1;
+            } else {
+                ui.canvas.width = 1920;
+                ui.canvas.height = 1080;
             }
             ui.seekSlider.max = ui.mediaPlayer.duration;
             ui.exportBtn.disabled = false;
         };
+
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        decodedAudioBuf = await ac.decodeAudioData(await file.arrayBuffer());
+        await ac.close();
     });
 
     ui.playBtn.addEventListener('click', () => { ui.mediaPlayer.paused ? ui.mediaPlayer.play() : ui.mediaPlayer.pause(); });
     ui.mediaPlayer.addEventListener('timeupdate', () => { if(!isExporting) ui.seekSlider.value = ui.mediaPlayer.currentTime; });
     ui.seekSlider.addEventListener('input', (e) => { ui.mediaPlayer.currentTime = parseFloat(e.target.value); });
 
-    // 🎙️ 音声データから無音区間（0.3秒以上の無音）を波形解析して切り分ける関数
     function detectSpeechSegments(audioData, sampleRate = 16000, silenceThresh = 0.015, minSilenceDuration = 0.3) {
         const minSilenceSamples = Math.floor(sampleRate * minSilenceDuration);
         const segments = [];
-        
         let inSpeech = false;
         let speechStart = 0;
         let silenceCounter = 0;
 
         for (let i = 0; i < audioData.length; i++) {
             const amplitude = Math.abs(audioData[i]);
-            
             if (amplitude > silenceThresh) {
-                if (!inSpeech) {
-                    inSpeech = true;
-                    speechStart = i;
-                }
+                if (!inSpeech) { inSpeech = true; speechStart = i; }
                 silenceCounter = 0;
             } else {
                 if (inSpeech) {
@@ -243,32 +264,19 @@
                     if (silenceCounter >= minSilenceSamples) {
                         inSpeech = false;
                         const speechEnd = i - silenceCounter;
-                        // 0.2秒以上の有音区間のみ採用
                         if ((speechEnd - speechStart) / sampleRate >= 0.2) {
-                            segments.push({
-                                start: speechStart / sampleRate,
-                                end: speechEnd / sampleRate,
-                                data: audioData.slice(speechStart, speechEnd)
-                            });
+                            segments.push({ start: speechStart / sampleRate, end: speechEnd / sampleRate, data: audioData.slice(speechStart, speechEnd) });
                         }
                     }
                 }
             }
         }
-
-        // 末尾の処理
         if (inSpeech && (audioData.length - speechStart) / sampleRate >= 0.2) {
-            segments.push({
-                start: speechStart / sampleRate,
-                end: audioData.length / sampleRate,
-                data: audioData.slice(speechStart)
-            });
+            segments.push({ start: speechStart / sampleRate, end: audioData.length / sampleRate, data: audioData.slice(speechStart) });
         }
-
         return segments;
     }
 
-    // AI文字起こし実行 (無音検出→順次ループ解析)
     ui.startBtn.addEventListener('click', async () => {
         if (!ui.mediaInput.files.length) { alert('ファイルを選択してください！'); return; }
         
@@ -287,21 +295,17 @@
             const arrayBuffer = await file.arrayBuffer();
             const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
             const audioData = audioBuffer.getChannelData(0);
+            await audioCtx.close();
 
-            // 1. まずWeb Audio APIで無音区間（0.3秒以上の無音）を探して音声をセグメント分割
             ui.aiStatus.innerText = "🔍 無音区間を検出し、セリフごとに分割中...";
             let segments = detectSpeechSegments(audioData, 16000, 0.015, 0.3);
-
-            // 万が一、無音が検出されなかった場合は全体を1個として処理
             if (segments.length === 0) {
                 segments = [{ start: 0, end: audioBuffer.duration, data: audioData }];
             }
 
-            // 2. 分割した各セグメントをループで1つずつWhisperに渡して認識
             for (let idx = 0; idx < segments.length; idx++) {
                 const seg = segments[idx];
                 ui.aiStatus.innerText = `✨ AI文字起こし中... (${idx + 1} / ${segments.length} 区間)`;
-                
                 const res = await transcriber(seg.data, { language: 'japanese', task: 'transcribe' });
                 const recognizedText = res.text.trim();
 
@@ -409,33 +413,25 @@
 
     ui.addBlockBtn.addEventListener('click', () => {
         const lastEnd = blocks.length > 0 ? blocks[blocks.length-1].end : 0;
-        blocks.push({ 
-            id: blockIdCounter++, 
-            start: lastEnd + 0.1, 
-            end: lastEnd + 3.1, 
-            text: "新規テロップ", 
-            override: false, 
-            style: {...getDefaultStyle()} 
-        });
+        blocks.push({ id: blockIdCounter++, start: lastEnd + 0.1, end: lastEnd + 3.1, text: "新規テロップ", override: false, style: {...getDefaultStyle()} });
         renderBlocksUI();
     });
 
-    function drawCanvas() {
-        ctx.clearRect(0, 0, ui.canvas.width, ui.canvas.height);
+    function renderFrameAt(t) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, ui.canvas.width, ui.canvas.height);
         
-        if (ui.mediaPlayer.readyState >= 2) {
+        if (ui.mediaPlayer.readyState >= 2 && ui.mediaPlayer.videoWidth > 0) {
             ctx.drawImage(ui.mediaPlayer, 0, 0, ui.canvas.width, ui.canvas.height);
         }
 
-        const t = ui.mediaPlayer.currentTime;
-        const activeBlock = blocks.find(b => t >= b.start && t <= b.end);
-        
-        if (activeBlock) {
+        const activeBlocks = blocks.filter(b => t >= b.start && t <= b.end);
+        for (const activeBlock of activeBlocks) {
             const style = activeBlock.override ? activeBlock.style : getDefaultStyle();
             const timeIn = t - activeBlock.start;
             
             ctx.save();
-            let alpha = 1.0; let yOffset = 0; let scale = 1.0; let textToDraw = activeBlock.text;
+            let alpha = 1.0, yOffset = 0, scale = 1.0, textToDraw = activeBlock.text;
 
             if (style.anim === 'fade') { alpha = Math.min(1, timeIn * 3); }
             else if (style.anim === 'slide-up') { alpha = Math.min(1, timeIn * 3); yOffset = (1 - alpha) * 40; }
@@ -443,7 +439,6 @@
             else if (style.anim === 'zoom-in') { alpha = Math.min(1, timeIn * 3); scale = 0.8 + (0.2 * Math.min(1, timeIn * 4)); }
 
             ctx.globalAlpha = alpha;
-            
             const fontItalic = style.italic ? 'italic ' : '';
             const fontWeight = style.bold ? 'bold ' : 'normal ';
             const fontSize = style.size || 60;
@@ -455,7 +450,6 @@
             
             const posX = style.x !== undefined ? style.x : 50;
             const posY = style.y !== undefined ? style.y : 88;
-
             const baseX = (posX / 100) * ui.canvas.width;
             const baseY = (posY / 100) * ui.canvas.height + yOffset;
 
@@ -467,18 +461,15 @@
 
             for (let i = 0; i < lines.length; i++) {
                 const y = startY + (i * lineHeight);
-                
                 const drawDecorations = (action) => {
                     if(!style.underline && !style.strikethrough) return;
                     const width = ctx.measureText(lines[i]).width;
                     const left = baseX - (width / 2);
                     const right = baseX + (width / 2);
-                    
                     ctx.beginPath();
                     if(style.underline) { const uy = y + (fontSize * 0.4); ctx.moveTo(left, uy); ctx.lineTo(right, uy); }
                     if(style.strikethrough) { const sy = y - (fontSize * 0.05); ctx.moveTo(left, sy); ctx.lineTo(right, sy); }
                     ctx.lineCap = 'round';
-
                     if (action === 'outer' && style.outerStrokeWidth > 0) {
                         ctx.strokeStyle = style.outerStrokeColor;
                         ctx.lineWidth = (fontSize * 0.08) + style.strokeWidth + (style.outerStrokeWidth * 2);
@@ -495,7 +486,6 @@
                 };
 
                 if (style.shadowBlur > 0) { ctx.shadowColor = style.shadowColor; ctx.shadowBlur = style.shadowBlur; }
-
                 if (style.outerStrokeWidth > 0) {
                     ctx.strokeStyle = style.outerStrokeColor;
                     ctx.lineWidth = style.strokeWidth + (style.outerStrokeWidth * 2);
@@ -503,7 +493,6 @@
                     drawDecorations('outer');
                     ctx.shadowBlur = 0;
                 }
-
                 if (style.strokeWidth > 0) {
                     ctx.strokeStyle = style.strokeColor;
                     ctx.lineWidth = style.strokeWidth;
@@ -511,7 +500,6 @@
                     drawDecorations('inner');
                     ctx.shadowBlur = 0;
                 }
-
                 ctx.fillStyle = style.color;
                 ctx.shadowBlur = 0;
                 ctx.fillText(lines[i], baseX, y);
@@ -519,61 +507,170 @@
             }
             ctx.restore();
         }
-        rafId = requestAnimationFrame(drawCanvas);
     }
-    drawCanvas();
 
+    function previewLoop() {
+        if (!isExporting) {
+            renderFrameAt(ui.mediaPlayer.currentTime);
+        }
+        requestAnimationFrame(previewLoop);
+    }
+    previewLoop();
+
+    function seekVideoExact(video, time) {
+        return new Promise((resolve) => {
+            if (!hasVideoTrack || Math.abs(video.currentTime - time) < 0.001) {
+                resolve();
+                return;
+            }
+            const onSeeked = () => {
+                video.removeEventListener('seeked', onSeeked);
+                resolve();
+            };
+            video.addEventListener('seeked', onSeeked);
+            video.currentTime = time;
+        });
+    }
+
+    // ⚡ WebCodecs 爆速書き出し
     ui.exportBtn.addEventListener('click', async () => {
         if(isExporting) return;
-        if(!window.MediaRecorder || !ui.canvas.captureStream) { alert('非対応ブラウザです。'); return; }
+        if(!window.VideoEncoder || !window.AudioEncoder) { alert('WebCodecs非対応ブラウザです（Chrome / Edge推奨）'); return; }
         if(!ui.mediaPlayer.src) return;
 
         isExporting = true;
-        ui.exportBtn.innerText = "書き出し中... (再生を止めないでください)";
-        ui.exportBtn.classList.replace('bg-[#8957e5]', 'bg-gray-600');
-        
-        const canvasStream = ui.canvas.captureStream(30);
-        let audioStream = new MediaStream();
+        ui.mediaPlayer.pause();
+        ui.exportBtn.disabled = true;
+        ui.exportBtn.innerText = "⚡ WebCodecs 爆速エンコード中...";
+        ui.exportProgressWrap.classList.remove('hidden');
+        ui.exportProgressBar.style.width = '0%';
+
+        const tStart = performance.now();
 
         try {
-            if(!audioCtxExport) {
-                audioCtxExport = new (window.AudioContext || window.webkitAudioContext)();
-                mediaSource = audioCtxExport.createMediaElementSource(ui.mediaPlayer);
-                mediaDest = audioCtxExport.createMediaStreamDestination();
-                mediaSource.connect(mediaDest);
-                mediaSource.connect(audioCtxExport.destination);
+            if (!decodedAudioBuf) {
+                const file = ui.mediaInput.files[0];
+                const ac = new (window.AudioContext || window.webkitAudioContext)();
+                decodedAudioBuf = await ac.decodeAudioData(await file.arrayBuffer());
+                await ac.close();
             }
-            audioStream = mediaDest.stream;
-        } catch(e) {
-            if (ui.mediaPlayer.captureStream) audioStream = ui.mediaPlayer.captureStream();
-            else if (ui.mediaPlayer.mozCaptureStream) audioStream = ui.mediaPlayer.mozCaptureStream();
-        }
 
-        const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioStream.getAudioTracks()]);
-        const mimeOptions = ['video/mp4;codecs=h264,aac', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
-        const mime = mimeOptions.find(m => MediaRecorder.isTypeSupported(m)) || '';
-        const ext = mime.includes('mp4') ? 'mp4' : 'webm';
-        
-        const rec = new MediaRecorder(combinedStream, mime ? { mimeType: mime } : undefined);
-        const chunks = [];
-        
-        rec.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
-        rec.onstop = () => {
-            const blob = new Blob(chunks, { type: mime });
+            const fps = parseInt(ui.exportFps.value, 10) || 30;
+            const width = ui.canvas.width;
+            const height = ui.canvas.height;
+            const duration = decodedAudioBuf.duration || ui.mediaPlayer.duration;
+            const totalFrames = Math.max(1, Math.ceil(duration * fps));
+            const frameDurationUs = Math.round(1_000_000 / fps);
+            const sampleRate = decodedAudioBuf.sampleRate;
+            const numChannels = Math.min(2, decodedAudioBuf.numberOfChannels);
+
+            const muxer = new Muxer({
+                target: new ArrayBufferTarget(),
+                video: { codec: 'avc', width, height },
+                audio: { codec: 'aac', numberOfChannels: numChannels, sampleRate },
+                fastStart: 'in-memory'
+            });
+
+            const videoEncoder = new VideoEncoder({
+                output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+                error: (e) => console.error('VideoEncoder error:', e)
+            });
+
+            videoEncoder.configure({
+                codec: 'avc1.640028',
+                width,
+                height,
+                bitrate: 5_000_000,
+                framerate: fps
+            });
+
+            const audioEncoder = new AudioEncoder({
+                output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+                error: (e) => console.error('AudioEncoder error:', e)
+            });
+
+            audioEncoder.configure({
+                codec: 'mp4a.40.2',
+                numberOfChannels: numChannels,
+                sampleRate,
+                bitrate: 128_000
+            });
+
+            // 1. 音声を一括エンコード
+            const ch0 = decodedAudioBuf.getChannelData(0);
+            const ch1 = numChannels > 1 ? decodedAudioBuf.getChannelData(1) : ch0;
+            const totalSamples = ch0.length;
+            const chunkSamples = sampleRate;
+
+            for (let offset = 0; offset < totalSamples; offset += chunkSamples) {
+                const frames = Math.min(chunkSamples, totalSamples - offset);
+                const planar = new Float32Array(frames * numChannels);
+                planar.set(ch0.subarray(offset, offset + frames), 0);
+                if (numChannels > 1) {
+                    planar.set(ch1.subarray(offset, offset + frames), frames);
+                }
+                const audioData = new AudioData({
+                    format: 'f32-planar',
+                    sampleRate,
+                    numberOfFrames: frames,
+                    numberOfChannels: numChannels,
+                    timestamp: Math.round((offset / sampleRate) * 1_000_000),
+                    data: planar
+                });
+                audioEncoder.encode(audioData);
+                audioData.close();
+            }
+
+            // 2. 全フレームを高速シーク＆テロップ描画してエンコード
+            for (let f = 0; f < totalFrames; f++) {
+                const t = Math.min(duration, f / fps);
+                await seekVideoExact(ui.mediaPlayer, t);
+                renderFrameAt(t);
+
+                const timestampUs = f * frameDurationUs;
+                const frame = new VideoFrame(ui.canvas, {
+                    timestamp: timestampUs,
+                    duration: frameDurationUs
+                });
+                videoEncoder.encode(frame, { keyFrame: f % (fps * 2) === 0 });
+                frame.close();
+
+                if (f % 10 === 0) {
+                    const pct = Math.min(99, Math.round((f / totalFrames) * 100));
+                    ui.exportProgressBar.style.width = `${pct}%`;
+                    ui.exportProgressText.innerText = `${pct}% (${f} / ${totalFrames} frames)`;
+                    if (videoEncoder.encodeQueueSize > 15) {
+                        await videoEncoder.flush();
+                    }
+                }
+            }
+
+            await videoEncoder.flush();
+            await audioEncoder.flush();
+            videoEncoder.close();
+            audioEncoder.close();
+            muxer.finalize();
+
+            const { buffer } = muxer.target;
+            const blob = new Blob([buffer], { type: 'video/mp4' });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `autostudio_export.${ext}`; a.click();
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `autostudio_turbo.mp4`;
+            a.click();
             URL.revokeObjectURL(url);
-            
-            isExporting = false; ui.exportBtn.innerText = "MP4で書き出す"; ui.exportBtn.classList.replace('bg-gray-600', 'bg-[#8957e5]');
-            ui.mediaPlayer.pause();
-        };
 
-        ui.mediaPlayer.currentTime = 0;
-        await ui.mediaPlayer.play();
-        rec.start(250);
-        ui.mediaPlayer.onended = () => { if(rec.state !== 'inactive') rec.stop(); };
+            const elapsed = ((performance.now() - tStart) / 1000).toFixed(1);
+            ui.exportProgressBar.style.width = '100%';
+            ui.exportProgressText.innerText = `✅ 完了！ (${elapsed}秒で爆速書き出し成功)`;
+        } catch (err) {
+            alert('書き出しエラー: ' + err.message);
+        } finally {
+            isExporting = false;
+            ui.exportBtn.disabled = false;
+            ui.exportBtn.innerText = "⚡ WebCodecsで爆速MP4書き出し";
+        }
     });
-
 </script>
 </body>
 </html>
